@@ -1,0 +1,33 @@
+# Basic test campaign
+id: test-basic
+version: "1.0.0"
+type: network
+name: "Basic Test Campaign"
+description: "Minimal campaign for testing"
+
+policy:
+  safety:
+    allow_aggressive: false
+    require_max_duration: true
+  runner:
+    max_parallel_targets: 2
+    defaults:
+      connection_timeout: 5s
+      connection_backoff: 100ms
+      max_reconnects: 2
+      max_connections_per_target: 1
+
+scanners:
+  - type: nmap
+    nmap:
+      open_only: true
+      ports:
+        - "1883,8883"
+
+tasks:
+  - id: mqtt-conformance-test
+    type: native
+    required_tags: ["protocol:mqtt"]
+    max_duration: 30s
+    exec:
+      params: {}

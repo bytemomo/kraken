@@ -1,0 +1,113 @@
+# =============================================================================
+# Scenario C: RTSP Attack Tree
+# Maps findings from both Kraken modules and nmap+NSE baseline to threats
+# =============================================================================
+#
+# Finding ID conventions:
+#   RTSP-*         : Kraken native module findings
+#   NSE-RTSP-*     : nmap NSE script findings (baseline)
+#   NMAP-*         : nmap service detection findings (baseline)
+
+# =============================================================================
+# S-1: Unauthorized Stream Access (STRIDE: Spoofing, Information Disclosure)
+# =============================================================================
+- name: "S-1: UNAUTHORIZED STREAM ACCESS"
+  type: OR
+  children:
+      - name: "EXPLOIT MISSING AUTHENTICATION"
+        description: "Camera allows anonymous RTSP access without credentials"
+        type: OR
+        children:
+            - name: "KRAKEN: ANONYMOUS ACCESS"
+              type: LEAF
+              finding_ids: ["RTSP-OPEN-PLAYBACK"]
+              finding_mode: any
+
+            - name: "NSE: ANONYMOUS URL ACCESS"
+              description: "rtsp-url-brute found accessible paths without auth"
+              type: LEAF
+              finding_ids: ["NSE-RTSP-URL-OPEN"]
+              finding_mode: any
+
+      - name: "EXPLOIT WEAK CREDENTIALS"
+        type: OR
+        children:
+            - name: "DEFAULT CREDENTIALS"
+              description: "Camera uses factory default username/password"
+              type: LEAF
+              finding_ids: ["DEFAULT-CREDENTIALS"]
+              finding_mode: any
+
+            - name: "WEAK PASSWORD"
+              description: "Camera uses easily guessable credentials"
+              type: LEAF
+              finding_ids: ["RTSP-WEAK-AUTH"]
+              finding_mode: any
+
+# =============================================================================
+# I-2: RTSP Enumeration (STRIDE: Information Disclosure)
+# =============================================================================
+- name: "I-2: RTSP ENUMERATION"
+  type: AND
+  children:
+      - name: "RTSP SERVICE DISCOVERED"
+        description: "RTSP endpoint responds to probes"
+        type: OR
+        children:
+            - name: "KRAKEN: SERVICE DISCOVERY"
+              type: LEAF
+              finding_ids: ["RTSP-DISCOVERY"]
+              finding_mode: any
+
+            - name: "NMAP: SERVICE DETECTION"
+              description: "nmap -sV detected RTSP service"
+              type: LEAF
+              finding_ids: ["NMAP-RTSP-SERVICE"]
+              finding_mode: any
+
+      - name: "STREAM PATHS OR METHODS EXPOSED"
+        description: "Camera exposes stream URIs or methods"
+        type: OR
+        children:
+            - name: "KRAKEN: ANONYMOUS DESCRIBE"
+              type: LEAF
+              finding_ids: ["RTSP-OPEN-PLAYBACK"]
+              finding_mode: any
+
+            - name: "NSE: METHODS ENUMERATED"
+              description: "rtsp-methods revealed supported methods"
+              type: LEAF
+              finding_ids: ["NSE-RTSP-METHODS"]
+              finding_mode: any
+
+            - name: "NSE: URLS ENUMERATED"
+              description: "rtsp-url-brute found valid paths"
+              type: LEAF
+              finding_ids: ["NSE-RTSP-URL-FOUND"]
+              finding_mode: any
+
+# =============================================================================
+# Combined Impact: Video Surveillance Compromise
+# =============================================================================
+- name: "VIDEO SURVEILLANCE COMPROMISE"
+  type: OR
+  children:
+      - name: "UNAUTHORIZED VIDEO ACCESS"
+        description: "Attacker can view live camera feeds"
+        type: OR
+        children:
+            - name: "ANONYMOUS ACCESS"
+              type: LEAF
+              finding_ids: ["RTSP-OPEN-PLAYBACK", "NSE-RTSP-URL-OPEN"]
+              finding_mode: any
+
+            - name: "CREDENTIAL COMPROMISE"
+              type: LEAF
+              finding_ids: ["RTSP-WEAK-AUTH", "DEFAULT-CREDENTIALS"]
+              finding_mode: any
+
+      - name: "RECONNAISSANCE ACHIEVED"
+        description: "Attacker mapped camera infrastructure"
+        type: LEAF
+        finding_ids: ["RTSP-DISCOVERY", "NMAP-RTSP-SERVICE", "NSE-RTSP-METHODS", "NSE-RTSP-URL-FOUND"]
+        finding_mode: any

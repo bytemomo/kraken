@@ -1,0 +1,158 @@
+id: scenario-a-mqtt
+type: network
+
+policy:
+    safety:
+        allow_aggressive: true
+        require_max_duration: true
+
+    runner:
+        max_parallel_targets: 4
+        defaults:
+            connection_timeout: 1s
+            max_reconnects: 3
+
+scanners:
+    - type: nmap
+      nmap:
+          ports: ["1883", "8883", "8884"]
+          open_only: true
+          timing: T3
+          skip_host_discovery: false
+          service_detect:
+              enabled: true
+              version: ALL
+
+attack_trees_def_path: /scenario/attack-tree.yaml
+
+conduit_templates:
+    - name: tcp
+      kind: stream
+      required_tags: ["protocol:tcp"]
+      stack:
+          - name: tcp
+
+    - name: tls
+      kind: stream
+      required_tags: ["supports:tls"]
+      stack:
+          - name: tcp
+          - name: tls
+            params:
+                skip_verify: true
+
+tasks:
+    - id: tls-version-check
+      type: lib
+      required_tags: ["supports:tls", "protocol:mqtt"]
+      max_duration: 30s
+      exec:
+          abi:
+              api: v1
+              library_path: /modules/protocols/tls/abi/tls_version_check/build/tls_version_check
+              symbol: kraken_run
+          params:
+              min_version: "1.2"
+              max_version: "1.3"
+
+    - id: cert-inspect
+      type: lib
+      required_tags: ["supports:tls", "protocol:mqtt"]
+      max_duration: 30s
+      exec:
+          abi:
+              api: v1
+              library_path: /modules/protocols/tls/abi/cert_inspect/target/release/libcert_inspect
+              symbol: kraken_run
+          params:
+              warn_days: 30
+              min_rsa_bits: 2048
+              allow_sha1: false
+              disallow_self_signed: true
+
+    - id: mqtt-auth-check
+      type: lib
+      required_tags: ["protocol:mqtt"]
+      max_duration: 60s
+      exec:
+          conduit_templates: [tcp, tls]
+          abi:
+              api: v2
+              library_path: /modules/protocols/mqtt/abi/mqtt_auth_check/build/mqtt_auth_check
+              symbol: kraken_run_v2
+
+    - id: mqtt-acl-probe
+      type: lib
+      required_tags: ["protocol:mqtt"]
+      max_duration: 120s
+      exec:
+          conduit_templates: [tcp, tls]
+          abi:
+              api: v2
+              library_path: /modules/protocols/mqtt/abi/mqtt_acl_probe/build/mqtt_acl_probe
+              symbol: kraken_run_v2
+          params:
+              creds_file: /scenario/profiles/common/test-credentials.txt
+
+    - id: mqtt-dict-attack
+      type: native
+      required_tags: ["protocol:mqtt", "protocol:tcp"]
+      max_duration: 180s
+      exec:
+          params:
+              credentials:
+                  - "admin:admin"
+                  - "admin:admin123"
+                  - "admin:password"
+                  - "scada:scada"
+                  - "scada:scada123"
+                  - "operator:operator"
+                  - "guest:guest"
+                  - "test:test"
+                  - "mqtt:mqtt"
+                  - "root:root"
+
+    - id: mqtt-sys-disclosure
+      type: lib
+      required_tags: ["protocol:mqtt"]
+      max_duration: 30s
+      exec:
+          abi:
+              api: v1
+              library_path: /modules/protocols/mqtt/abi/mqtt_sys_disclosure/build/mqtt_sys_disclosure
+              symbol: kraken_run
+
+    - id: mqtt-conformance-test
+      type: native
+      required_tags: ["protocol:mqtt", "protocol:tcp"]
+      max_duration: 120s
+
+    - id: mqtt-replay
+      type: lib
+      required_tags: ["protocol:mqtt", "protocol:tcp"]
+      max_duration: 60s
+      aggressive: true # Could make an un-patched mqtt broker crash
+      exec:
+          abi:
+              api: v1
+              library_path: /modules/protocols/mqtt/abi/mqtt_replay/build/mqtt_replay
+              symbol: kraken_run
+          params:
+              sequence_num: "1"
+              path0: /modules/protocols/mqtt/abi/mqtt_replay/CVE-2024-8376.txt
+
+    - id: mqtt-boofuzz
+      type: container
+      required_tags: ["protocol:mqtt", "protocol:tcp"]
+      max_duration: 5m
+      aggressive: true
+      exec:
+          container:
+              runtime: host
+              image: python
+              command: [
+                "/modules/protocols/mqtt/container/boofuzz/boofuzz_poc.py",
+                "fuzz",
+                "--max-iterations",
+                "1000"
+              ]

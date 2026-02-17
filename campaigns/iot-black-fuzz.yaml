@@ -1,0 +1,67 @@
+id: "iot-fuzzing"
+version: "1.0.0"
+
+name: "IoT Fuzzing Assessment"
+description: |
+    README
+    ======
+
+    This campaign is used to automatically find fuzzable services in the network and then
+    fuzz them with fine tuned modules for the said protocols, for now the supported protocols
+    are:
+        - MQTT
+        - RTSP
+
+    The campaign can require a lot of time to execute and also could find anything usefull.
+    Each module handles alone the connection, fuzzing process and results savings. This mean
+    that depending on the module the results could be saved with different formats.
+
+    If possible, as you will see specified in the params of each module, it would be nice to
+    give the modules access to the process that they are fuzzing.
+
+    This is beacause a white box approach (code path analysis, and output analysis) could give
+    more informations than a black box approach (that uses only a network response based approach).
+
+    As this campaign concetrate in finding implementation bugs in the servers that uses this protocol
+    it does not have an attack trees file.
+
+    NOTE: NEVER use this campaign in a production environment as it will try to find unknown
+    vulnerabilites in the protocols servers, this could lead to crashes and a downtime in the
+    production environment. Even if the campaign does find any vulnerability the trafic generated
+    could creates many allerts and flood the network making it more unstable.
+
+policy:
+    safety:
+        allow_aggressive: true
+        require_max_duration: true
+    runner:
+        max_parallel_targets: 2
+
+scanners:
+    - type: nmap
+      nmap:
+          open_only: true
+          skip_host_discovery: false
+          enable_udp: false
+          service_detect:
+              enabled: true
+              version: ALL
+          min_rate: 100
+          timeout: 30m
+          timing: T3
+          ports:
+              - "1883,8883,8083"
+
+tasks:
+    - id: "mqtt-boofuzz"
+      required_tags: ["protocol:mqtt"]
+      max_duration: 5m
+      type: container
+      exec:
+          container:
+              runtime: "podman"
+              image: "boofuzz-mqtt:latest"
+              mounts:
+                  - host_path: "../modules/protocols/mqtt/container/boofuzz/output"
+                    container_path: "/app/boofuzz-results"
+                    read_only: false

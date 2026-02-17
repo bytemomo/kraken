@@ -1,0 +1,48 @@
+id: "iot-afl-fuzzing"
+version: "1.0.0"
+
+type: fuzz
+name: "IoT AFL++ Fuzzing (greybox)"
+description: |
+    Stand-alone fuzzing campaign for using AFL++ harnesses.
+    This configuration skips network discovery and runs each fuzzer inside containers.
+    For each target we perform a corpus-minimization step and then run afl-fuzz
+    using the (optionally) minimized seed corpus and the protocol dictionary.
+
+policy:
+    safety:
+        allow_aggressive: true
+        require_max_duration: true
+    runner:
+        max_parallel_targets: 1
+
+tasks:
+    - id: "nanomq_fuzz"
+      type: container
+      max_duration: 5s
+      exec:
+          container:
+              runtime: "podman"
+              image: "aflpp-nanomq:latest"
+              mounts:
+                  - host_path: "../modules/protocols/mqtt/corpus"
+                    container_path: "/work/seeds"
+                    read_only: true
+                  - host_path: "../modules/protocols/mqtt/fuzz/nanomq/my_output"
+                    container_path: "/work/output"
+                    read_only: false
+
+    - id: "mosquitto_fuzz"
+      type: container
+      max_duration: 5s
+      exec:
+          container:
+              runtime: "podman"
+              image: "aflpp-mosquitto:latest"
+              mounts:
+                  - host_path: "../modules/protocols/mqtt/corpus"
+                    container_path: "/work/seeds"
+                    read_only: true
+                  - host_path: "../modules/protocols/mqtt/fuzz/mosquitto/my_output"
+                    container_path: "/work/output"
+                    read_only: false

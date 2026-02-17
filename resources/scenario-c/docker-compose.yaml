@@ -1,0 +1,125 @@
+services:
+    camera-1:
+        build:
+            context: src/camera
+        container_name: scenario-c-camera-1
+        hostname: camera-entrance
+        environment:
+            - CAMERA_ID=CAM-ENTRANCE
+            - RTSP_PORT=554
+            - RTSP_PATH=/stream
+            - VIDEO_PATTERN=smpte
+            - RTSP_AUTH=none
+        networks:
+            camera_net:
+                ipv4_address: 172.30.0.10
+        restart: unless-stopped
+
+    camera-2:
+        build:
+            context: src/camera
+        container_name: scenario-c-camera-2
+        hostname: camera-mid
+        environment:
+            - CAMERA_ID=CAM-MID-SECTION
+            - RTSP_PORT=554
+            - RTSP_PATH=/stream
+            - VIDEO_PATTERN=ball
+            - RTSP_AUTH=none
+        networks:
+            camera_net:
+                ipv4_address: 172.30.0.11
+        restart: unless-stopped
+
+    camera-3:
+        build:
+            context: src/camera
+        container_name: scenario-c-camera-3
+        hostname: camera-exit
+        environment:
+            - CAMERA_ID=CAM-EXIT
+            - RTSP_PORT=554
+            - RTSP_PATH=/stream
+            - VIDEO_PATTERN=snow
+            - RTSP_AUTH=none
+        networks:
+            camera_net:
+                ipv4_address: 172.30.0.12
+        restart: unless-stopped
+
+    # =========================================================================
+    # Baseline 1: nmap+NSE (general-purpose scanner)
+    # =========================================================================
+    nmap-baseline:
+        image: instrumentisto/nmap:latest
+        container_name: scenario-c-nmap
+        depends_on:
+            - camera-1
+            - camera-2
+            - camera-3
+        volumes:
+            - ./baseline:/baseline:ro,z
+            - ./results/nmap:/results:z
+        entrypoint: ["/bin/sh", "/baseline/nmap-scan.sh", "172.30.0.10-12", "/results"]
+        cap_add:
+            - NET_RAW
+        networks:
+            camera_net:
+                ipv4_address: 172.30.0.201
+        profiles:
+            - nmap
+
+    # =========================================================================
+    # Baseline 2: Cameradar (specialized RTSP scanner)
+    # =========================================================================
+    cameradar-baseline:
+        image: ullaakut/cameradar:latest
+        container_name: scenario-c-cameradar
+        depends_on:
+            - camera-1
+            - camera-2
+            - camera-3
+        volumes:
+            - ./baseline:/baseline:ro,z
+            - ./results/cameradar:/results:z
+        entrypoint: ["/bin/sh", "/baseline/cameradar-scan.sh", "172.30.0.10,172.30.0.11,172.30.0.12", "/results"]
+        cap_add:
+            - NET_RAW
+        networks:
+            camera_net:
+                ipv4_address: 172.30.0.202
+        profiles:
+            - cameradar
+
+    # =========================================================================
+    # Kraken: orchestrated scanning with safety policies
+    # =========================================================================
+    kraken:
+        container_name: scenario-c-kraken
+        build:
+            context: ../../
+            dockerfile: deploy/build/Dockerfile.alpine.kraken
+        command: ["-campaign", "/scenario/campaign.yaml", "-out", "/results", "-cidrs", "172.30.0.0/24"]
+        depends_on:
+            - camera-1
+            - camera-2
+            - camera-3
+        volumes:
+            - ./results/kraken:/results:z
+            - ./:/scenario:ro,z
+        cap_add:
+            - NET_RAW
+            - NET_ADMIN
+        networks:
+            camera_net:
+                ipv4_address: 172.30.0.200
+        profiles:
+            - kraken
+
+networks:
+    camera_net:
+        driver: bridge
+        ipam:
+            config:
+                - subnet: 172.30.0.0/24
+                  gateway: 172.30.0.1

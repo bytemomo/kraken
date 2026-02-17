@@ -1,0 +1,40 @@
+# Campaign with multiple scanner types
+id: test-multi-scanner
+version: "1.0.0"
+type: network
+name: "Multi-Scanner Test"
+description: "Tests nmap and ethercat scanners together"
+
+policy:
+  safety:
+    allow_aggressive: false
+    require_max_duration: true
+  runner:
+    max_parallel_targets: 4
+
+scanners:
+  - type: nmap
+    nmap:
+      open_only: true
+      ports:
+        - "1883,8883,502"
+
+  - type: ethercat
+    ethercat:
+      iface: "eth0"
+      timeout: 10s
+
+tasks:
+  - id: mqtt-auth-check
+    type: native
+    required_tags: ["protocol:mqtt"]
+    max_duration: 60s
+    exec:
+      params: {}
+
+  - id: ethercat-info
+    type: native
+    required_tags: ["protocol:ethercat"]
+    max_duration: 30s
+    exec:
+      params: {}

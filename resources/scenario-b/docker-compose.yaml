@@ -1,0 +1,54 @@
+services:
+    simulator:
+        build:
+            context: src/simulator
+        container_name: scenario-b-sim
+        network_mode: host
+        command: ["simulator", "ecatB", "/eeprom/foot.bin"]
+        privileged: true
+        restart: unless-stopped
+
+    master:
+        build:
+            context: src/master
+        container_name: scenario-b-master
+        network_mode: host
+        environment:
+            - PYTHONUNBUFFERED=1
+        command: ["python3", "/app/easycat.py", "-i", "ecatA"]
+        depends_on:
+            - simulator
+        privileged: true
+        restart: unless-stopped
+        profiles:
+            - default
+
+    kraken:
+        container_name: scenario-b-kraken
+        build:
+            context: ../../
+            dockerfile: deploy/build/Dockerfile.alpine.kraken
+        depends_on:
+            - simulator
+        network_mode: host
+        command: ["-campaign", "/scenario/campaign.yaml", "-iface", "ecatA", "-out", "/results"]
+        volumes:
+            - ./results:/results:z
+            - ./:/scenario:ro,z
+        privileged: true
+        profiles:
+            - tools
+
+    capture:
+        image: alpine:3.19
+        container_name: scenario-b-capture
+        network_mode: host
+        volumes:
+            - ./captures:/captures:z
+        entrypoint: >
+            /bin/sh -c "apk add --no-cache tcpdump &&
+            echo 'Capture ready. Run: docker exec scenario-b-capture tcpdump -i ecatA -w /captures/ethercat.pcap' &&
+            tail -f /dev/null"
+        privileged: true
+        profiles:
+            - tools

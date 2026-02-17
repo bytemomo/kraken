@@ -1,0 +1,238 @@
+services:
+    certs:
+        image: eclipse-mosquitto:2.0
+        container_name: scenario-a-certs
+        volumes:
+            - ./scripts:/scripts:z
+            - ./certs:/certs:z
+            - ./profiles/common:/common:z
+        command:
+            - /bin/sh
+            - -c
+            - |
+                # Install openssl for certificate generation
+                apk add --no-cache openssl > /dev/null 2>&1
+
+                # Generate certificates
+                /bin/sh /scripts/generate-certs.sh
+
+                # Generate password file if it doesn't have hashed passwords
+                if ! grep -q '$$' /common/passwd 2>/dev/null; then
+                  echo "Generating hashed password file..."
+                  rm -f /common/passwd
+                  mosquitto_passwd -b -c /common/passwd admin admin123
+                  mosquitto_passwd -b /common/passwd scada scada123
+                  mosquitto_passwd -b /common/passwd plc plc123
+                  mosquitto_passwd -b /common/passwd rtu rtu123
+                  mosquitto_passwd -b /common/passwd operator operator
+                  mosquitto_passwd -b /common/passwd guest guest
+                  echo "Password file generated."
+                else
+                  echo "Password file already contains hashed passwords."
+                fi
+
+                # Fix permissions so mosquitto user (UID 1883) can read files
+                chmod 644 /common/passwd 2>/dev/null || true
+                chmod 644 /certs/*.crt 2>/dev/null || true
+                chmod 644 /certs/*.key 2>/dev/null || true
+        networks:
+            - dmz_net
+
+    broker:
+        image: eclipse-mosquitto:2.0
+        container_name: scenario-a-broker
+        hostname: mqtt-broker
+        depends_on:
+            certs:
+                condition: service_completed_successfully
+        volumes:
+            - ./profiles/${SECURITY_PROFILE:-insecure}/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro,z
+            - ./profiles/${SECURITY_PROFILE:-insecure}/acl.conf:/mosquitto/config/acl.conf:ro,z
+            - ./profiles/common/passwd:/mosquitto/config/passwd:ro,z
+            - ./certs:/mosquitto/certs:ro,z
+            - mosquitto_data:/mosquitto/data
+            - mosquitto_log:/mosquitto/log
+        entrypoint: ["/usr/sbin/mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
+        networks:
+            dmz_net:
+                ipv4_address: 172.20.0.10
+            ot_net:
+                ipv4_address: 172.21.0.10
+        healthcheck:
+            test: ["CMD-SHELL", "nc -z localhost 8883 || nc -z localhost 1883 || exit 1"]
+            interval: 5s
+            timeout: 3s
+            retries: 3
+            start_period: 5s
+        restart: unless-stopped
+
+    plc-publisher:
+        image: eclipse-mosquitto:2.0
+        container_name: scenario-a-plc
+        hostname: plc-01
+        depends_on:
+            broker:
+                condition: service_healthy
+        volumes:
+            - ./certs:/certs:ro,z
+            - ./scripts:/scripts:ro,z
+        entrypoint: ["/bin/sh", "/scripts/plc-publisher.sh"]
+        environment:
+            - MQTT_BROKER=mqtt-broker
+            - MQTT_PORT=8883
+            - CLIENT_ID=plc-01
+            - DEVICE_TYPE=plc
+        networks:
+            ot_net:
+                ipv4_address: 172.21.0.20
+        restart: unless-stopped
+
+    rtu-publisher:
+        image: eclipse-mosquitto:2.0
+        container_name: scenario-a-rtu
+        hostname: rtu-01
+        depends_on:
+            broker:
+                condition: service_healthy
+        volumes:
+            - ./certs:/certs:ro,z
+            - ./scripts:/scripts:ro,z
+        entrypoint: ["/bin/sh", "/scripts/rtu-publisher.sh"]
+        environment:
+            - MQTT_BROKER=mqtt-broker
+            - MQTT_PORT=8883
+            - CLIENT_ID=rtu-01
+            - DEVICE_TYPE=rtu
+        networks:
+            ot_net:
+                ipv4_address: 172.21.0.21
+        restart: unless-stopped
+
+    scada-subscriber:
+        image: eclipse-mosquitto:2.0
+        container_name: scenario-a-scada
+        hostname: scada-01
+        depends_on:
+            broker:
+                condition: service_healthy
+        volumes:
+            - ./certs:/certs:ro,z
+            - ./scripts:/scripts:ro,z
+        entrypoint: ["/bin/sh", "/scripts/scada-subscriber.sh"]
+        environment:
+            - MQTT_BROKER=mqtt-broker
+            - MQTT_PORT=8883
+            - CLIENT_ID=scada-01
+        networks:
+            dmz_net:
+                ipv4_address: 172.20.0.20
+        restart: unless-stopped
+
+    bridge:
+        image: eclipse-mosquitto:2.0
+        container_name: scenario-a-bridge
+        hostname: mqtt-bridge
+        depends_on:
+            broker:
+                condition: service_healthy
+        volumes:
+            - ./profiles/common/bridge.conf:/mosquitto/config/mosquitto.conf:ro,z
+            - ./certs:/mosquitto/certs:ro,z
+        networks:
+            dmz_net:
+                ipv4_address: 172.20.0.30
+            it_net:
+                ipv4_address: 172.22.0.30
+        profiles:
+            - bridge
+        restart: unless-stopped
+
+    seeder:
+        image: eclipse-mosquitto:2.0
+        container_name: scenario-a-seeder
+        depends_on:
+            broker:
+                condition: service_healthy
+        volumes:
+            - ./certs:/certs:ro,z
+            - ./scripts:/scripts:ro,z
+        entrypoint: ["/bin/sh", "/scripts/seed-topics.sh"]
+        environment:
+            - MQTT_BROKER=mqtt-broker
+            - MQTT_PORT=8883
+            - MQTT_USER=admin
+            - MQTT_PASS=admin123
+            - MQTT_TLS=true
+        networks:
+            dmz_net:
+                ipv4_address: 172.20.0.99
+        restart: "no"
+
+    kraken:
+        container_name: scenario-a-kraken
+        build:
+            context: ../../
+            dockerfile: resources/scenario-a/Dockerfile
+        command: ["-campaign", "/scenario/campaign.yaml", "-out", "/results", "-cidrs", "172.20.0.0/24"]
+        depends_on:
+            broker:
+                condition: service_healthy
+        volumes:
+            - ./results/${SECURITY_PROFILE:-insecure}/:/results:z
+            - ./:/scenario:ro,z
+            - ./certs:/certs:ro,z
+        cap_add:
+            - NET_RAW
+            - NET_ADMIN
+        networks:
+            dmz_net:
+                ipv4_address: 172.20.0.100
+        profiles:
+            - tools
+
+    capture:
+        image: alpine:3.19
+        container_name: scenario-a-capture
+        depends_on:
+            broker:
+                condition: service_healthy
+        volumes:
+            - ./captures:/captures:z
+        entrypoint:
+            [
+                "/bin/sh",
+                "-c",
+                "apk add --no-cache tcpdump && echo 'Capture ready. Use: docker exec scenario-a-capture tcpdump -i any -w /captures/mqtt.pcap port 1883 or port 8883' && tail -f /dev/null",
+            ]
+        cap_add:
+            - NET_ADMIN
+            - NET_RAW
+        network_mode: host
+        profiles:
+            - tools
+
+networks:
+    ot_net:
+        driver: bridge
+        ipam:
+            config:
+                - subnet: 172.21.0.0/24
+                  gateway: 172.21.0.1
+
+    dmz_net:
+        driver: bridge
+        ipam:
+            config:
+                - subnet: 172.20.0.0/24
+                  gateway: 172.20.0.1
+
+    it_net:
+        driver: bridge
+        ipam:
+            config:
+                - subnet: 172.22.0.0/24
+                  gateway: 172.22.0.1
+
+volumes:
+    mosquitto_data:
+    mosquitto_log:

@@ -1,0 +1,23 @@
+# Campaign with invalid policy - aggressive task but allow_aggressive is false
+id: test-invalid-policy
+version: "1.0.0"
+type: network
+name: "Invalid Policy Test"
+description: "Should fail validation - aggressive task not allowed"
+
+policy:
+  safety:
+    allow_aggressive: false  # Aggressive tasks not permitted
+    require_max_duration: true
+  runner:
+    max_parallel_targets: 2
+
+tasks:
+  - id: mqtt-fuzzer
+    type: container
+    aggressive: true  # This should cause validation to fail
+    max_duration: 300s
+    exec:
+      container:
+        image: mqtt-fuzz:latest
+        command: ["fuzz"]

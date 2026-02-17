@@ -1,0 +1,160 @@
+@startuml
+
+!theme vibrant
+skinparam linetype poly
+skinparam roundcorner 20
+skinparam stereotype {
+  BackgroundColor<<campaign>> #F2C5A1
+  BackgroundColor<<attack_trees>> #F2A1A1
+  BackgroundColor<<report>> #A1F2B5
+  BackgroundColor<<native_structure>> #E8E0FF
+  BorderColor #5C5C5C
+}
+skinparam actor {
+  BackgroundColor #A1B5F2
+  BorderColor #5C5C5C
+}
+skinparam package {
+  BackgroundColor #D9D9D9
+  BorderColor #5C5C5C
+}
+skinparam component {
+  BackgroundColor #F2E3A1
+  BorderColor #5C5C5C
+}
+skinparam artifact {
+  BackgroundColor #FFFFFF
+  BorderColor #5C5C5C
+}
+
+title Kraken — Component Diagram
+
+
+
+package "Artificats" {
+    artifact "campaign.yaml" as CAMPAIGN_YAML
+    artifact "attack_trees.yaml" as ATTACK_TREES_YAML
+    artifact "report.json" as REPORT_JSON
+}
+
+actor "Operator" as ACT
+
+package "Kraken" as K {
+
+  [CLI]
+
+  package "IO & Serialization" as IO {
+    [YAML Decoder] as YAML_DEC
+    [JSON Encoder] as JSON_ENC
+  }
+
+  CLI -[hidden]right- IO
+
+  package "Configuration" as CONF {
+    [Campaign Model] as CAMP
+    [Attack Tree Definitions] as TREE_DEF
+    [Module Definitions] as MODDEF
+  }
+
+  package "Scanning & Classification" as SCAN {
+    package "Scanner Core" as SCAN_CORE {
+      [Scan Coordinator] as SCN
+      [CIDR Normalizer] as SCN_NORM
+      [Target Classifier] as SCN_CLASS
+    }
+    interface IScannerEngine
+    [Nmap Engine] as SCN_NMAP <<impl>>
+  }
+
+  package "Execution Orchestrator" as EXEC {
+    package "Runner Core" as RUNNER_CORE {
+      [Campaign Orchestrator] as RUN_ORCH
+      [Per-Target Planner] as RUN_PLAN
+      [Module Dispatcher] as RUN_DISPATCH
+    }
+    interface IModuleExecutor
+    [Native Builtin Adapter] as EXEC_NATIVE
+    [ABI Module Adapter] as EXEC_ABI
+    [CLI Module Adapter] as EXEC_CLI
+    [Docker Module Adapter] as EXEC_DOCKER
+    [gRPC Module Adapter] as EXEC_GRPC
+
+    package "Native Builtins" as EXEC_NATIVE_PKG {
+      [Native Registry] as REGISTRY
+      interface INativeModule
+      [Generic Native Module] as MOD_NATIVE_GENERIC
+    }
+  }
+
+  package "Knowledge & Reporting" as KNOW {
+    [Attack Tree Evaluator] as ATK
+    [JSON Reporter] as REP_JSON
+  }
+
+
+}
+
+package "External Modules" as EXT {
+  [ABI Module]  as MOD_ABI
+  [gRPC Module] as MOD_GRPC
+  [CLI Module]  as MOD_CLI
+  [Docker Module] as MOD_DOCKER
+}
+
+artifact "Dockerfile" as DOCKERFILE
+interface IDockerImage
+DOCKERFILE --( IDockerImage
+
+' Operator workflow
+ACT --> CLI : executes
+CLI --> CAMPAIGN_YAML : reads
+CLI --> ATTACK_TREES_YAML : reads
+
+' Configuration loading
+CAMPAIGN_YAML --> YAML_DEC
+ATTACK_TREES_YAML --> YAML_DEC
+YAML_DEC --> CAMP
+YAML_DEC --> MODDEF
+YAML_DEC --> TREE_DEF
+TREE_DEF --> ATK
+
+' Scanner
+CAMP --> SCN : scanner config + CIDRs
+SCN --> SCN_NORM : sanitize target scope
+SCN_NORM --> SCN : normalized CIDRs
+SCN --( IScannerEngine : configure + run engine
+SCN_NMAP .up.. IScannerEngine
+SCN --> SCN_CLASS : raw scan results
+SCN_CLASS --> RUN_ORCH : classified targets
+
+' Runner orchestration
+CAMP --> RUN_ORCH : runner config + tasks
+RUN_ORCH --> RUN_PLAN : build target plans
+RUN_ORCH --> RUN_DISPATCH : schedule executions
+RUN_PLAN --> RUN_DISPATCH : module steps
+RUN_DISPATCH --( IModuleExecutor
+EXEC_NATIVE .up.. IModuleExecutor
+EXEC_ABI .up.. IModuleExecutor
+EXEC_CLI .up.. IModuleExecutor
+EXEC_DOCKER .up.. IModuleExecutor
+EXEC_GRPC .up.. IModuleExecutor
+EXEC_NATIVE --> REGISTRY : lookup descriptor
+REGISTRY --( INativeModule : exposes descriptors
+MOD_NATIVE_GENERIC .up.. INativeModule
+
+' External modules
+EXEC_ABI --> MOD_ABI
+EXEC_CLI --> MOD_CLI
+MOD_DOCKER .up.. IDockerImage : implements
+EXEC_DOCKER --> MOD_DOCKER
+EXEC_GRPC --> MOD_GRPC
+
+' Reporting + attack trees
+RUN_DISPATCH --> REP_JSON : run results
+REP_JSON --> JSON_ENC
+JSON_ENC --> REPORT_JSON : writes
+RUN_DISPATCH --> ATK : findings
+REPORT_JSON --> ACT : is read by
+REPORT_JSON --> ACT : is read by
+
+@enduml

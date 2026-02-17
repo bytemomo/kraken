@@ -1,0 +1,135 @@
+- name: "T1: UNAUTHORIZED NETWORK ACCESS"
+  type: OR
+  children:
+      - name: "FRAME INJECTION"
+        type: AND
+        children:
+            - name: "SPOOFED FRAMES ACCEPTED"
+              description: "Network accepts frames with spoofed WKC or slave addresses"
+              type: LEAF
+              finding_ids: ["ecat-injection"]
+              finding_mode: any
+
+            - name: "NO FRAME AUTHENTICATION"
+              description: "EtherCAT lacks cryptographic frame authentication"
+              type: LEAF
+              finding_ids: ["ecat-injection"]
+              finding_mode: any
+
+- name: "T2: DENIAL OF SERVICE"
+  type: OR
+  children:
+      - name: "TRAFFIC FLOODING"
+        description: "Network susceptible to frame flooding attacks"
+        type: LEAF
+        finding_ids: ["ecat-dos"]
+        finding_mode: any
+
+      - name: "STATE MANIPULATION"
+        description: "Slaves can be forced into unintended states via BWR commands"
+        type: LEAF
+        finding_ids: ["ecat-dos"]
+        finding_mode: any
+
+      - name: "TIMING DISRUPTION"
+        description: "Cycle timing can be disrupted by burst traffic"
+        type: LEAF
+        finding_ids: ["ecat-dos"]
+        finding_mode: any
+
+- name: "T3: MAN-IN-THE-MIDDLE"
+  type: AND
+  children:
+      - name: "TRAFFIC CAPTURE"
+        description: "EtherCAT frames can be passively captured"
+        type: LEAF
+        finding_ids: ["ecat-mitm"]
+        finding_mode: any
+
+      - name: "REPLAY ATTACKS"
+        description: "Captured frames can be replayed without detection"
+        type: OR
+        children:
+            - name: "SIMPLE REPLAY"
+              description: "Unmodified frame replay accepted"
+              type: LEAF
+              finding_ids: ["ecat-mitm"]
+              finding_mode: any
+
+            - name: "MODIFIED REPLAY"
+              description: "Frames with modified WKC/data accepted"
+              type: LEAF
+              finding_ids: ["ecat-mitm"]
+              finding_mode: any
+
+- name: "T4: PROCESS DATA MANIPULATION"
+  type: AND
+  children:
+      - name: "DATA CORRUPTION UNDETECTED"
+        description: "Modified PDO data not detected by master/slave"
+        type: LEAF
+        finding_ids: ["ecat-mitm"]
+        finding_mode: any
+
+      - name: "COMMAND SUBSTITUTION"
+        description: "Datagram commands can be altered in transit"
+        type: LEAF
+        finding_ids: ["ecat-mitm"]
+        finding_mode: any
+
+- name: "T5: SLAVE IMPERSONATION"
+  type: AND
+  children:
+      - name: "FAKE RESPONSES ACCEPTED"
+        description: "Master accepts responses from non-existent slaves"
+        type: LEAF
+        finding_ids: ["ecat-injection"]
+        finding_mode: any
+
+      - name: "NO SLAVE AUTHENTICATION"
+        description: "No cryptographic binding between master and slaves"
+        type: LEAF
+        finding_ids: ["ecat-injection"]
+        finding_mode: any
+
+- name: "ETHERCAT SECURITY COMPROMISE"
+  type: OR
+  children:
+      - name: "SAFETY SYSTEM BYPASS"
+        description: "Safety functions can be defeated via frame injection/manipulation"
+        type: AND
+        children:
+            - name: "INJECTION CAPABILITY"
+              type: LEAF
+              finding_ids: ["ecat-injection"]
+              finding_mode: any
+            - name: "STATE CONTROL"
+              type: LEAF
+              finding_ids: ["ecat-dos"]
+              finding_mode: any
+
+      - name: "PROCESS DISRUPTION"
+        description: "Normal operation can be disrupted"
+        type: OR
+        children:
+            - name: "DOS ATTACK"
+              type: LEAF
+              finding_ids: ["ecat-dos"]
+              finding_mode: any
+            - name: "MITM ATTACK"
+              type: LEAF
+              finding_ids: ["ecat-mitm"]
+              finding_mode: any
+
+      - name: "DATA INTEGRITY LOSS"
+        description: "Process data integrity cannot be guaranteed"
+        type: AND
+        children:
+            - name: "CAPTURE POSSIBLE"
+              type: LEAF
+              finding_ids: ["ecat-mitm"]
+              finding_mode: any
+            - name: "MODIFICATION POSSIBLE"
+              type: LEAF
+              finding_ids: ["ecat-mitm"]
+              finding_mode: any

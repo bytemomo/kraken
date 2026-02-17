@@ -1,0 +1,223 @@
+id: "iot-standard"
+version: "2.0.0"
+
+name: "IoT Network Assessment"
+description: |
+    README
+    ======
+
+    This module assess basic misconfigurations and possible known vulnerabilities in
+    the protocols server in ICS environment.
+
+    Each module will handle the connection and its execution on with its own logic,
+    as you can see there are different types of modules and each module is more or less
+    complex.
+
+    Some example of modules are:
+        - TLS version check: checks that the server only accept TLS >= 1.2,1.3
+        - Default password audit: checks that services do not accept known passwords.
+        - MQTT auth check: checks that a broker does not accept anonymous users.
+        - Cert inspection: checks that, if TLS is present, the used certificates are
+            not self-signed, if mTLS is enforced, and other requirements specified
+            with the params field.
+
+    This campaign also include an attack tree file, where there are attack trees defined.
+    Each attack tree is evaluated at the end of the campaign and its reported if the root
+    is evaluated as true (i.e. an attacker objective is accomplished).
+
+    This gives a better understanding of possible chain of attacks that could be used in the
+    network.
+
+    NOTE: NEVER use this campaign in a production environment as it will try some real known
+    attacks that could lead to crashes in servers and production environment.
+
+    FILE SYNTAX
+    ============
+
+    `id`, `name` and `version` are not essential to the run, they are used to describe the campaign.
+
+    runner: contains every option to set the EXECUTION phase of the Kraken. This phase handles the life cycle of the
+        execution of each modules.
+
+        - global_timeout: timeout for modules, if the module does not specify its own or this one is bigger
+            then the global one is used.
+        - max_parallel_targets: number of parallel step that can be executed, the Kraken executable will parallelize
+            steps on different targets (i.e. two steps on the same `host:port` will NEVER be executed on parallel).
+
+
+    scanner: Configuration options for Kraken's **SCANNER** phase, which discovers and classifies targets.
+        Kraken uses `nmap` under the hood, and many settings mirror `nmap` behavior.
+
+        - open_only: Report only open ports.
+        - skip_host_discovery: Skip the host discovery step (do not attempt to find live hosts).
+        - enable_udp: Also scan UDP ports.
+        - service_detect: Enable service/version detection and fingerprinting. Setting this to `false` disables
+            service detection, which reduces classification accuracy. When enabled, it supports two mutually
+            exclusive modes: `version_all` or `version_light`.
+        - min_rate: Enforce a minimum probes-per-second rate for the scan (useful to control throughput).
+        - timeout: Maximum time to wait for probes or host responses before considering them timed out.
+        - timing: Controls scan aggressiveness (how quickly probes are sent, parallelism, and retry/backoff behavior).
+            Values map to nmap timing templates: `paranoid = T0`, `sneaky = T1`, `polite = T2`, `normal = T3` (default),
+            `aggressive = T4`, `insane = T5`.
+        - ports: List of ports to target. If empty, the scanner will use the standard port set.
+
+policy:
+    safety:
+        allow_aggressive: false
+        require_max_duration: true
+    runner:
+        max_parallel_targets: 16
+
+scanners:
+    - type: nmap
+      nmap:
+          open_only: true
+          skip_host_discovery: false
+          enable_udp: false
+          service_detect:
+              enabled: true
+              version: "ALL"
+          min_rate: 100
+          timeout: 30m
+          timing: T3
+          ports:
+              - "1883,8883,8083,8084,80,443,8000,8080,8443,8888,502,4840,554,8554,5672,5671,21,22,23,25,110,143,3128,3306,5432,6379,9002,9003"
+
+attack_trees_def_path: "./campaigns/trees/iot.yaml"
+
+conduit_templates:
+    - name: tcp
+      kind: stream
+      stack:
+          - name: tcp
+
+    - name: tls
+      kind: stream
+      required_tags: ["supports:tls"]
+      stack:
+          - name: tcp
+          - name: tls
+            params:
+                skip_verify: true
+
+tasks:
+    - id: "cert-inspect"
+      required_tags: ["supports:tls", "protocol:tcp"]
+      max_duration: 15s
+      type: lib
+      exec:
+          abi:
+              api: v1
+              library_path: "./modules/protocols/tls/abi/cert_inspect/target/release/libcert_inspect"
+              symbol: kraken_run
+          params:
+              tls_insecure: true
+              warn_days: 21
+              min_rsa_bits: 4096
+              allow_sha1: false
+              disallow_self_signed: true
+              print_certificates_stdout: true
+              match_hostname: true
+              require_san: true
+
+    - id: "tls-version-check"
+      required_tags: ["supports:tls", "protocol:tcp"]
+      max_duration: 20s
+      type: lib
+      exec:
+          abi:
+              api: v1
+              library_path: "./modules/protocols/tls/abi/tls_version_check/build/tls_version_check"
+              symbol: "kraken_run"
+
+    # MQTT authentication & authorization checks:
+    # Uses conduit_templates to automatically expand to both TCP and TLS variants
+
+    - id: "mqtt-auth-check"
+      required_tags: ["protocol:mqtt"]
+      max_duration: 15s
+      type: lib
+      exec:
+          conduit_templates: [tcp, tls]
+          abi:
+              api: v2
+              library_path: "./modules/protocols/mqtt/abi/mqtt_auth_check/build/mqtt_auth_check"
+              symbol: kraken_run_v2
+          params:
+              creds_file: "./credentialdbs/creds.txt"
+
+    - id: "mqtt-acl-probe"
+      required_tags: ["protocol:mqtt"]
+      max_duration: 20s
+      type: lib
+      exec:
+          conduit_templates: [tcp, tls]
+          abi:
+              api: v2
+              library_path: "./modules/protocols/mqtt/abi/mqtt_acl_probe/build/mqtt_acl_probe"
+              symbol: kraken_run_v2
+          params:
+              creds_file: "./credentialdbs/creds.txt"
+              topic: "kraken/acl/probe"
+
+    - id: "mqtt-replay"
+      required_tags: ["protocol:mqtt", "protocol:tcp"]
+      max_duration: 1m
+      type: lib
+      exec:
+          abi:
+              api: v1
+              library_path: "./modules/protocols/mqtt/abi/mqtt_replay/build/mqtt_replay"
+              symbol: kraken_run
+          params:
+              sequence_num: "1"
+              path0: "./modules/protocols/mqtt/abi/mqtt_replay/CVE-2024-8376.txt"
+
+    - id: "mqtt-sys-disclosure"
+      required_tags: ["protocol:mqtt", "protocol:tcp"]
+      max_duration: 5s
+      type: lib
+      exec:
+          abi:
+              api: v1
+              library_path: "./modules/protocols/mqtt/abi/mqtt_sys_disclosure/build/mqtt_sys_disclosure"
+              symbol: kraken_run
+
+    - id: "mqtt-conformance-test"
+      required_tags: ["protocol:mqtt"]
+      max_duration: 10s
+      type: native
+
+    - id: "rtsp-surface-scan"
+      required_tags: ["protocol:rtsp", "protocol:tcp"]
+      max_duration: 10s
+      type: native
+      exec:
+          params:
+              user_agent: "Kraken-RTSP/1.0" # optional override
+              probe_paths: ["/", "/live.sdp", "/cam/realmonitor"]
+
+    - id: "rtsp-dict-attack"
+      required_tags: ["protocol:rtsp", "protocol:tcp"]
+      max_duration: 30s
+      type: native
+      exec:
+          params:
+              path: "/live.sdp"
+              # credentials_file: "./wordlists/rtsp.txt"
+              # credentials:
+              #     - "admin:admin"
+              #     - { username: "root", password: "pass" }
+
+    - id: "mqtt-dict-attack"
+      required_tags: ["protocol:mqtt"]
+      max_duration: 30s
+      type: native
+      exec:
+          params:
+              client_id: "kraken-dict"
+              keep_alive: 30
+              # credentials_file: "./wordlists/mqtt.txt"
+              # credentials:
+              #     - "admin:admin"
+              #     - "user:password"

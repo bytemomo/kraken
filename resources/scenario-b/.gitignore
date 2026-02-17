@@ -1,0 +1,16 @@
+# Certificates (generated)
+certs/*.crt
+certs/*.key
+certs/*.pem
+certs/*.srl
+
+# Packet captures
+captures/*.pcap
+captures/*.pcapng
+
+# Results
+results/*/
+
+# Runtime
+*.log
+*.pid

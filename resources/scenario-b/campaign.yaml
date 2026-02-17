@@ -1,0 +1,63 @@
+id: scenario-b-ethercat
+type: network
+
+policy:
+    safety:
+        allow_aggressive: false
+        require_max_duration: true
+
+    runner:
+        max_parallel_targets: 1
+        defaults:
+            connection_timeout: 10s
+            max_reconnects: 3
+
+scanners:
+    - type: ethercat
+      ethercat:
+          timeout: 1s
+
+attack_trees_def_path: /scenario/attack-tree.yaml
+
+conduit_templates:
+    - name: ethercat
+      kind: frame
+      stack:
+          - name: ethernet
+            params:
+                interface: ecatA
+                ethertype: 0x88A4
+
+tasks:
+    - id: ecat-inject
+      type: lib
+      required_tags: ["protocol:ethercat", "role:master"]
+      max_duration: 30s
+      exec:
+          conduit_templates: [ethercat]
+          abi:
+              api: v2
+              library_path: /modules/protocols/ethercat/abi/build/libecat_inject
+              symbol: kraken_run_v2
+
+    - id: ecat-dos
+      type: lib
+      required_tags: ["protocol:ethercat", "role:master"]
+      max_duration: 30s
+      exec:
+          conduit_templates: [ethercat]
+          abi:
+              api: v2
+              library_path: /modules/protocols/ethercat/abi/build/libecat_dos
+              symbol: kraken_run_v2
+
+    - id: ecat-mitm
+      type: lib
+      required_tags: ["protocol:ethercat", "role:master"]
+      max_duration: 30s
+      exec:
+          conduit_templates: [ethercat]
+          abi:
+              api: v2
+              library_path: /modules/protocols/ethercat/abi/build/libecat_mitm
+              symbol: kraken_run_v2

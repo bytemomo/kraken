@@ -1,0 +1,21 @@
+# Campaign with missing max_duration - should fail validation
+id: test-missing-duration
+version: "1.0.0"
+type: network
+name: "Missing Duration Test"
+description: "Should fail validation - task missing max_duration"
+
+policy:
+  safety:
+    allow_aggressive: false
+    require_max_duration: true  # Requires all tasks to have max_duration
+  runner:
+    max_parallel_targets: 2
+
+tasks:
+  - id: mqtt-auth-check
+    type: native
+    required_tags: ["protocol:mqtt"]
+    # Missing max_duration - should cause validation to fail
+    exec:
+      params: {}

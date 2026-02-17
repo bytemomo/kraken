@@ -1,0 +1,8 @@
+certs/*
+!certs/.gitkeep
+
+results/*
+!results/.gitkeep
+
+captures/*
+!captures/.gitkeep

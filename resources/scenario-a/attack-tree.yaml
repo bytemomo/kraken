@@ -1,0 +1,192 @@
+- name: "S-1: UNAUTHORIZED COMMAND PUBLICATION"
+  type: OR
+  children:
+      - name: "BYPASS AUTHENTICATION"
+        type: OR
+        children:
+            - name: "ANONYMOUS ACCESS ENABLED"
+              type: LEAF
+              finding_ids: ["MQTT-ANON", "MQTT-PUBSUB-ANON"]
+              finding_mode: any
+
+            - name: "WEAK/DEFAULT CREDENTIALS"
+              type: LEAF
+              finding_ids: ["MQTT-VALID-CREDS", "DEFAULT-CREDENTIALS"]
+              finding_mode: any
+
+      - name: "ACL PERMITS UNAUTHORIZED PUBLISH"
+        type: LEAF
+        finding_ids: ["MQTT-ACL-PUB"]
+        finding_mode: any
+
+- name: "T-1: TELEMETRY TAMPERING OR REPLAY"
+  type: AND
+  children:
+      - name: "OBTAIN VALID SESSION"
+        type: OR
+        children:
+            - name: "ANONYMOUS CONNECTION"
+              type: LEAF
+              finding_ids: ["MQTT-ANON"]
+              finding_mode: any
+
+            - name: "CREDENTIAL COMPROMISE"
+              type: LEAF
+              finding_ids: ["MQTT-VALID-CREDS", "DEFAULT-CREDENTIALS"]
+              finding_mode: any
+
+      - name: "PUBLISH ACCESS TO TELEMETRY TOPICS"
+        type: LEAF
+        finding_ids: ["MQTT-ACL-PUB", "MQTT-PUBSUB-ANON"]
+        finding_mode: any
+
+- name: "T-2: ABUSE OF RETAINED MESSAGES"
+  type: AND
+  children:
+      - name: "OBTAIN PUBLISH ACCESS"
+        type: OR
+        children:
+            - name: "ANONYMOUS PUBLISH"
+              type: LEAF
+              finding_ids: ["MQTT-PUBSUB-ANON"]
+              finding_mode: any
+
+            - name: "AUTHENTICATED PUBLISH"
+              type: LEAF
+              finding_ids: ["MQTT-ACL-PUB"]
+              finding_mode: any
+
+      - name: "RETAINED MESSAGES ENABLED"
+        type: LEAF
+        finding_ids: ["mqtt-conformance-test-mqtt-3.3.1-6"]
+        finding_mode: any
+
+- name: "I-1: UNAUTHORIZED SUBSCRIPTION"
+  type: OR
+  children:
+      - name: "ANONYMOUS SUBSCRIPTION"
+        type: LEAF
+        finding_ids: ["MQTT-ANON", "MQTT-PUBSUB-ANON"]
+        finding_mode: any
+
+      - name: "ACL PERMITS WILDCARD SUBSCRIPTION"
+        type: LEAF
+        finding_ids: ["MQTT-ACL-SUB"]
+        finding_mode: any
+
+- name: "I-2: METADATA LEAKAGE VIA $SYS"
+  type: AND
+  children:
+      - name: "OBTAIN BROKER ACCESS"
+        type: OR
+        children:
+            - name: "ANONYMOUS ACCESS"
+              type: LEAF
+              finding_ids: ["MQTT-ANON"]
+              finding_mode: any
+
+            - name: "ANY VALID CREDENTIALS"
+              type: LEAF
+              finding_ids: ["MQTT-VALID-CREDS", "DEFAULT-CREDENTIALS"]
+              finding_mode: any
+
+      - name: "$SYS TOPICS ACCESSIBLE"
+        type: LEAF
+        finding_ids: ["mqtt-sys-disclosure"]
+        finding_mode: any
+
+- name: "D-1: DENIAL OF SERVICE ON BROKER"
+  type: OR
+  children:
+      - name: "RESOURCE EXHAUSTION"
+        type: AND
+        children:
+            - name: "UNAUTHENTICATED CONNECTIONS ALLOWED"
+              type: LEAF
+              finding_ids: ["MQTT-ANON"]
+              finding_mode: any
+
+            - name: "NO RATE LIMITING OBSERVED"
+              type: LEAF
+              finding_ids: ["mqtt-conformance-test-mqtt-3.1.4-5"]
+              finding_mode: any
+
+- name: "E-1: SESSION HIJACK VIA WEAK TLS"
+  type: OR
+  children:
+      - name: "WEAK TLS VERSION SUPPORTED"
+        type: LEAF
+        finding_ids: ["TLS-SUPPORT-OVERVIEW"]
+        finding_mode: any
+
+      - name: "CERTIFICATE ISSUES"
+        type: OR
+        children:
+            - name: "SELF-SIGNED OR EXPIRED"
+              type: LEAF
+              finding_ids: ["CERT-SELFSIGNED", "CERT-EXPIRED", "CERT-EXPIRING"]
+              finding_mode: any
+
+            - name: "WEAK CRYPTOGRAPHY"
+              type: LEAF
+              finding_ids: ["CERT-SHA1", "CERT-WEAKKEY"]
+              finding_mode: any
+
+            - name: "HOSTNAME/IDENTITY MISMATCH"
+              type: LEAF
+              finding_ids: ["CERT-HOSTNAME", "CERT-NOSAN"]
+              finding_mode: any
+
+            - name: "IMPROPER KEY USAGE"
+              type: LEAF
+              finding_ids: ["CERT-NO-SERVER-AUTH"]
+              finding_mode: any
+
+      - name: "PLAINTEXT COMMUNICATION ALLOWED"
+        type: LEAF
+        finding_ids: ["MQTT-ANON"] # If we can connect to 1883
+        finding_mode: any
+
+- name: "R-1: NON-REPUDIABLE ACTIONS"
+  type: OR
+  children:
+      - name: "SHARED OR DEFAULT CREDENTIALS IN USE"
+        type: LEAF
+        finding_ids: ["DEFAULT-CREDENTIALS", "MQTT-VALID-CREDS"]
+        finding_mode: any
+
+      - name: "ANONYMOUS ACCESS PREVENTS ATTRIBUTION"
+        type: LEAF
+        finding_ids: ["MQTT-ANON"]
+        finding_mode: any
+
+- name: "L-1: LATERAL MOVEMENT VIA MQTT BRIDGE"
+  type: AND
+  children:
+      - name: "BRIDGE ACCESS OBTAINED"
+        type: OR
+        children:
+            - name: "BRIDGE USES WEAK CREDENTIALS"
+              type: LEAF
+              finding_ids: ["MQTT-VALID-CREDS", "DEFAULT-CREDENTIALS"]
+              finding_mode: any
+
+            - name: "BRIDGE ALLOWS ANONYMOUS"
+              type: LEAF
+              finding_ids: ["MQTT-ANON"]
+              finding_mode: any
+
+      - name: "CROSS-BOUNDARY TOPIC ACCESS"
+        type: LEAF
+        finding_ids: ["MQTT-ACL-SUB", "MQTT-ACL-PUB"]
+        finding_mode: any
+
+- name: "E-2: SUPPLY-CHAIN COMPROMISE (KNOWN CVE)"
+  type: LEAF
+  finding_ids: ["CVE-2024-8376"]
+  finding_mode: any
+
+- name: "P-1: PROTOCOL ROBUSTNESS FAILURE"
+  type: LEAF
+  finding_ids: ["mqtt-boofuzz-crash"]
+  finding_mode: any

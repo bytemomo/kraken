@@ -1,0 +1,48 @@
+# Campaign with conduit templates for testing template expansion
+id: test-templates
+version: "1.0.0"
+type: network
+name: "Template Expansion Test"
+description: "Tests conduit template expansion"
+
+policy:
+  safety:
+    allow_aggressive: false
+    require_max_duration: true
+  runner:
+    max_parallel_targets: 4
+
+conduit_templates:
+  - name: tcp
+    kind: stream
+    stack:
+      - name: tcp
+
+  - name: tls
+    kind: stream
+    required_tags: ["supports:tls"]
+    stack:
+      - name: tcp
+      - name: tls
+        params:
+          skip_verify: true
+
+scanners:
+  - type: nmap
+    nmap:
+      open_only: true
+      ports:
+        - "1883,8883"
+
+tasks:
+  - id: mqtt-auth-check
+    type: lib
+    required_tags: ["protocol:mqtt"]
+    max_duration: 60s
+    exec:
+      conduit_templates: [tcp, tls]
+      abi:
+        api: v2
+        library: /modules/mqtt_auth_check.so
+        symbol: kraken_run_v2
+      params: {}

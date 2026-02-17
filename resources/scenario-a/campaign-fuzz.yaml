@@ -1,0 +1,155 @@
+id: scenario-a-mqtt-fuzz
+type: fuzz
+
+policy:
+    safety:
+        allow_aggressive: true
+        require_max_duration: true
+
+    runner:
+        max_parallel_targets: 1
+        defaults:
+            connection_timeout: 30s
+
+tasks:
+    # # Broker CONNECT handler
+    # - id: mosquitto-fuzz-connect
+    #   type: container
+    #   max_duration: 10m
+    #   aggressive: true
+    #   exec:
+    #       container:
+    #           image: mosquitto-fuzz:aflpp
+    #           command: ["fuzz", "connect"]
+    #           mounts:
+    #               - host_path: ../../modules/protocols/mqtt/corpus
+    #                 container_path: /work/seeds
+    #                 read_only: true
+    #               - host_path: results/fuzz/mosquitto
+    #                 container_path: /work/output
+
+    # # Broker PUBLISH handler
+    # - id: mosquitto-fuzz-publish
+    #   type: container
+    #   max_duration: 10m
+    #   aggressive: true
+    #   exec:
+    #       container:
+    #           image: mosquitto-fuzz:aflpp
+    #           command: ["fuzz", "publish"]
+    #           mounts:
+    #               - host_path: ../../modules/protocols/mqtt/corpus
+    #                 container_path: /work/seeds
+    #                 read_only: true
+    #               - host_path: results/fuzz/mosquitto
+    #                 container_path: /work/output
+
+    # # Broker SUBSCRIBE handler
+    # - id: mosquitto-fuzz-subscribe
+    #   type: container
+    #   max_duration: 10m
+    #   aggressive: true
+    #   exec:
+    #       container:
+    #           image: mosquitto-fuzz:aflpp
+    #           command: ["fuzz", "subscribe"]
+    #           mounts:
+    #               - host_path: ../../modules/protocols/mqtt/corpus
+    #                 container_path: /work/seeds
+    #                 read_only: true
+    #               - host_path: results/fuzz/mosquitto
+    #                 container_path: /work/output
+
+    # # Packet parsing
+    # - id: mosquitto-fuzz-packet-read
+    #   type: container
+    #   max_duration: 10m
+    #   aggressive: true
+    #   exec:
+    #       container:
+    #           image: mosquitto-fuzz:aflpp
+    #           command: ["fuzz", "packet_read"]
+    #           mounts:
+    #               - host_path: ../../modules/protocols/mqtt/corpus
+    #                 container_path: /work/seeds
+    #                 read_only: true
+    #               - host_path: results/fuzz/mosquitto
+    #                 container_path: /work/output
+
+    # # MQTT 5.0 property parsing
+    # - id: mosquitto-fuzz-property
+    #   type: container
+    #   max_duration: 10m
+    #   aggressive: true
+    #   exec:
+    #       container:
+    #           image: mosquitto-fuzz:aflpp
+    #           command: ["fuzz", "property"]
+    #           mounts:
+    #               - host_path: ../../modules/protocols/mqtt/corpus
+    #                 container_path: /work/seeds
+    #                 read_only: true
+    #               - host_path: results/fuzz/mosquitto
+    #                 container_path: /work/output
+
+    # --- Report collection (run after fuzzing to collect findings) ---
+
+    - id: mosquitto-report-connect
+      type: container
+      max_duration: 1m
+      exec:
+          container:
+              image: mosquitto-fuzz:aflpp
+              command: ["report", "connect"]
+              mounts:
+                  - host_path: results/fuzz/mosquitto
+                    container_path: /work/output
+                    read_only: true
+
+    - id: mosquitto-report-publish
+      type: container
+      max_duration: 1m
+      exec:
+          container:
+              image: mosquitto-fuzz:aflpp
+              command: ["report", "publish"]
+              mounts:
+                  - host_path: results/fuzz/mosquitto
+                    container_path: /work/output
+                    read_only: true
+
+    - id: mosquitto-report-subscribe
+      type: container
+      max_duration: 1m
+      exec:
+          container:
+              image: mosquitto-fuzz:aflpp
+              command: ["report", "subscribe"]
+              mounts:
+                  - host_path: results/fuzz/mosquitto
+                    container_path: /work/output
+                    read_only: true
+
+    - id: mosquitto-report-packet-read
+      type: container
+      max_duration: 1m
+      exec:
+          container:
+              image: mosquitto-fuzz:aflpp
+              command: ["report", "packet_read"]
+              mounts:
+                  - host_path: results/fuzz/mosquitto
+                    container_path: /work/output
+                    read_only: true
+
+    - id: mosquitto-report-property
+      type: container
+      max_duration: 1m
+      exec:
+          container:
+              image: mosquitto-fuzz:aflpp
+              command: ["report", "property"]
+              mounts:
+                  - host_path: results/fuzz/mosquitto
+                    container_path: /work/output
+                    read_only: true

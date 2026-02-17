@@ -1,0 +1,242 @@
+# README
+# ======
+#
+#   Attack tree definitions for IoT campaigns.
+#   With this definition we try to cover the majority of chain of attacks in the field of
+#   ICS networks for IoT protocols (in the specific MQTT, EtherCAT and RTSP).
+#
+#   type: LEAF | AND | OR
+#       - AND: if all the children are TRUE then also this node is TRUE
+#       - OR: at least one node from the children has to be TRUE to activate the node
+#       - LEAF: to be true the findings have to match in one of the ways the specified in the finding_mode field
+#
+#   findings: list
+#       - list of finding names that the modules will write in the results when that module find a certain finding.
+#           They need to match with the modules' one and the name is case sensitive
+#
+#   finding_mode: any | all | threshold
+#       - any: if there is one match in the finding ids and the findings found after the run then the node is true.
+#       - all: only if ALL the finding ids are found in the run then the node is true.
+#       - trheshold: if the number of asserted finding id is > finding_threshold then the node is true.
+#
+#   finding_threashold: int
+#       - number of findings that needs to be found in the run to activate the node
+
+# ====================== #
+# MQTT                   #
+# ====================== #
+
+- name: "MQTT DATA EXFILTRATION"
+  type: AND
+  children:
+      - name: "OBTAIN MQTT VALID SESSION"
+        type: LEAF
+        finding_ids: ["MQTT-ANON"] # TODO: Other possible findings
+        finding_mode: any
+
+      - name: "BROKER PERMISSIVE PUBSUB"
+        type: LEAF
+        finding_ids: ["MQTT-PUBSUB-ANON"]
+        finding_mode: any
+
+- name: "GAIN UNAUTHORIZED MQTT PUBLISH ACCESS"
+  type: OR
+  children:
+      - name: "AUTHENTICATE AS PUBLISHER"
+        type: AND
+        children:
+            - name: "VALID CREDENTIALS OR TOKEN"
+              type: LEAF
+              finding_ids: ["MQTT-VALID-CREDS", "MQTT-TOKEN-VALID"]
+              finding_mode: any
+
+            - name: "ACL ALLOWS PUBLISH"
+              type: LEAF
+              finding_ids: ["MQTT-ACL-PERMISSIVE", "MQTT-ACL-MISSING"]
+              finding_mode: any
+
+      - name: "BYPASS AUTHENTICATION"
+        type: OR
+        children:
+            - name: "ANONYMOUS CONNECT ENABLED"
+              type: LEAF
+              finding_ids: ["MQTT-ANON", "MQTT-ANON-CONNECT"]
+              finding_mode: any
+
+            - name: "SESSION HIJACK OR CLIENTID COLLISION"
+              type: LEAF
+              finding_ids: ["MQTT-SESSION-RIDE", "MQTT-CLIENTID-COLLISION"]
+              finding_mode: any
+
+            - name: "BROKER IMPLEMENTATION BUG"
+              type: LEAF
+              finding_ids: ["PROTOCOL-PARSER-OVERFLOW", "MQTT-PARSER-CRASH-CVE"]
+              finding_mode: any
+
+- name: "CREATE PERSISTENT MQTT BACKCHANNEL"
+  type: AND
+  children:
+      - name: "RETAINED MESSAGES ABUSE"
+        type: LEAF
+        finding_ids: ["MQTT-RETAIN-ABUSE", "MQTT-RETAINED-BACKDOOR"]
+        finding_mode: any
+
+      - name: "PUBLISH/ SUBSCRIBE RIGHTS"
+        type: LEAF
+        finding_ids: ["MQTT-ACL-PERMISSIVE", "MQTT-ACL-MISSING"]
+        finding_mode: any
+
+      - name: "OUTBOUND CONNECTIVITY FROM DEVICE"
+        type: LEAF
+        finding_ids: ["OUTBOUND-ALLOW-ANY", "HTTP-PROXY-OPEN"]
+        finding_mode: any
+
+- name: "EXFILTRATE SENSITIVE TELEMETRY VIA MQTT"
+  type: AND
+  children:
+      - name: "COLLECT SENSITIVE TOPICS"
+        type: OR
+        children:
+            - name: "TOPIC NAMESPACE LEAK"
+              type: LEAF
+              finding_ids: ["MQTT-TOPIC-DEVICE-LEAK", "MQTT-TOPIC-OVERLAP"]
+              finding_mode: any
+
+            - name: "CREDENTIALS/CONFIG DUMP"
+              type: LEAF
+              finding_ids: ["CREDS-FOUND", "CONFIG-DUMP"]
+              finding_mode: any
+
+      - name: "ESTABLISH STEALTHY TRANSPORT"
+        type: OR
+        children:
+            - name: "COVERT MQTT CHANNEL"
+              type: LEAF
+              finding_ids: ["MQTT-PUB-SUB-BACKDOOR", "MQTT-EXFIL-HIDDEN"]
+              finding_mode: any
+
+            - name: "ENCRYPTED TUNNEL"
+              type: LEAF
+              finding_ids: ["SSH-TUNNEL-ESTABLISHED", "VPN-CLIENT-DETECTED"]
+              finding_mode: any
+
+      - name: "COMPLETE TRANSFER"
+        type: LEAF
+        finding_ids: ["EXFIL-COMPLETED", "LARGE-UPLOAD-DETECTED"]
+        finding_mode: any
+
+# ====================== #
+# RTSP                   #
+# ====================== #
+
+- name: "STREAM VIDEO WITHOUT AUTHORIZATION (RTSP)"
+  type: OR
+  children:
+      - name: "ANONYMOUS STREAM ACCESS"
+        type: LEAF
+        finding_ids: ["RTSP-AUTH-BYPASS", "RTSP-OPEN-PLAYBACK"]
+        finding_mode: any
+
+      - name: "WEAK OR DEFAULT CREDENTIALS"
+        type: LEAF
+        finding_ids: ["RTSP-WEAK-AUTH", "RTSP-BASIC-AUTH-USED", "DEFAULT-CREDENTIALS"]
+        finding_mode: any
+
+      - name: "EXPLOIT STREAM HANDLER BUG"
+        type: LEAF
+        finding_ids: ["RTSP-MEDIA-CRASH-CVE", "RTSP-PARSER-OVERFLOW"]
+        finding_mode: any
+
+- name: "EXFILTRATE METADATA VIA RTSP ANNOUNCE/SET_PARAMETER"
+  type: AND
+  children:
+      - name: "ANNOUNCE/SET_PARAMETER ACCEPTED"
+        type: LEAF
+        finding_ids: ["RTSP-ANNOUNCE-ABUSE", "RTSP-SETPARAM-EXFIL"]
+        finding_mode: any
+
+      - name: "METADATA AVAILABLE ON DEVICE"
+        type: LEAF
+        finding_ids: ["RTSP-METADATA-EXPOSED", "DEVICE-INFO-IN-RESPONSE"]
+        finding_mode: any
+
+      - name: "OUTBOUND CHANNEL PRESENT"
+        type: LEAF
+        finding_ids: ["OUTBOUND-ALLOW-ANY", "HTTP-PROXY-OPEN"]
+        finding_mode: any
+
+- name: "DENIAL OF SERVICE AGAINST RTSP SERVICE"
+  type: OR
+  children:
+      - name: "SESSION RESOURCE EXHAUSTION"
+        type: LEAF
+        finding_ids: ["RTSP-SESSION-EXHAUST", "RTSP-DESCRIBE-LOOP"]
+        finding_mode: any
+
+      - name: "RTSP FLOOD / MALFORMED RTP"
+        type: LEAF
+        finding_ids: ["RTSP-RTCP-FLOOD", "RTSP-RTP-MALFORMED-PACKET"]
+        finding_mode: any
+
+      - name: "EXPLOIT PARSER CRASH"
+        type: LEAF
+        finding_ids: ["RTSP-MEDIA-CRASH-CVE", "PROTOCOL-PARSER-OVERFLOW"]
+        finding_mode: any
+
+# ====================== #
+# EtherCAT               #
+# ====================== #
+
+- name: "MANIPULATE ETHERCAT PROCESS DATA"
+  type: AND
+  children:
+      - name: "WRITE ACCESS TO SLAVES/CONFIG"
+        type: LEAF
+        finding_ids: ["ETHERCAT-CONFIG-WRITE", "MODBUS-WRITE-ENABLED"]
+        finding_mode: any
+
+      - name: "NO AUTHENTICATION / OPEN DIAGNOSTICS"
+        type: LEAF
+        finding_ids: ["ETHERCAT-NO-AUTH", "ETHERCAT-DIAG-OPEN"]
+        finding_mode: any
+
+      - name: "TIMING CONTROL / CYCLE MANIPULATION"
+        type: LEAF
+        finding_ids: ["ETHERCAT-TIMING-ABUSE", "FIELDBUS-CYCLE-MANIPULATE"]
+        finding_mode: any
+
+- name: "PERSISTENT BACKDOOR VIA ETHERCAT CONFIG"
+  type: AND
+  children:
+      - name: "PERSISTENT CONFIG WRITE"
+        type: LEAF
+        finding_ids: ["ETHERCAT-CONFIG-WRITE", "MODBUS-PERSISTENT-WRITE"]
+        finding_mode: any
+
+      - name: "NO INTEGRITY CHECKS ON CONFIG"
+        type: LEAF
+        finding_ids: ["NO-MSG-INTEGRITY", "NO-ETHERCAT-HMAC"]
+        finding_mode: any
+
+      - name: "DIAGNOSTIC INTERFACE LEFT OPEN"
+        type: LEAF
+        finding_ids: ["ETHERCAT-DIAG-OPEN", "FIELDBUS-MAINT-OPEN"]
+        finding_mode: any
+
+- name: "DISCOVER PROTOCOL SERVICES AND FOOTPRINT"
+  type: OR
+  children:
+      - name: "ACTIVE PROTOCOL ENUMERATION"
+        type: LEAF
+        finding_ids: ["MQTT-DISCOVERY", "RTSP-DISCOVERY", "ETHERCAT-DISCOVERY"]
+        finding_mode: any
+
+      - name: "PASSIVE TELEMETRY LEAKAGE"
+        type: LEAF
+        finding_ids: ["PROTOCOL-TELEMETRY-EXPOSED", "DEVICE-INFO-IN-RESPONSE"]
+        finding_mode: any
+
+      - name: "PROBE AMPLIFICATION"
+        type: LEAF
+        finding_ids: ["PROBE-AMPLIFY-MQTT", "PROBE-AMPLIFY-RTSP"]
+        finding_mode: any

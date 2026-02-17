@@ -1,0 +1,93 @@
+id: scenario-c-rtsp
+type: network
+
+# =============================================================================
+# Safety Policies - Kraken's key differentiator from standalone tools
+# =============================================================================
+# These constraints are ENFORCED by the framework. Modules cannot bypass them.
+# Standalone tools like nmap have no such guardrails.
+policy:
+    safety:
+        # Prevent aggressive scanning that could crash embedded devices
+        allow_aggressive: false
+        # All tasks must declare maximum runtime
+        require_max_duration: true
+        # Restrict to target scope only (no scanning outside defined CIDRs)
+        scope_enforcement: strict
+
+    runner:
+        # Limit parallel operations to avoid overwhelming cameras
+        max_parallel_targets: 3
+        defaults:
+            connection_timeout: 10s
+            max_reconnects: 3
+
+# =============================================================================
+# Service Discovery
+# =============================================================================
+scanners:
+    - type: nmap
+      nmap:
+          ports: ["554", "8554"]
+          open_only: true
+          timing: T3
+          skip_host_discovery: false
+          service_detect:
+              enabled: true
+              version: ALL
+
+attack_trees_def_path: /scenario/attack-tree.yaml
+
+# =============================================================================
+# Conduit Templates
+# =============================================================================
+conduit_templates:
+    - name: tcp
+      kind: stream
+      stack:
+          - name: tcp
+
+# =============================================================================
+# Tasks - Each produces structured findings mapped to attack trees
+# =============================================================================
+tasks:
+    # RTSP endpoint discovery and method enumeration
+    - id: rtsp-surface-scan
+      type: native
+      required_tags: ["protocol:rtsp"]
+      max_duration: 30s
+      exec:
+          conduit_templates: [tcp]
+          params:
+              probe_paths:
+                  - "/"
+                  - "/stream"
+                  - "/live.sdp"
+                  - "/video"
+                  - "/h264"
+                  - "/cam/realmonitor"
+                  - "/axis-media/media.amp"
+                  - "/ch1"
+                  - "/ch0_0.h264"
+
+    # Credential testing with common defaults
+    - id: rtsp-dict-attack
+      type: native
+      required_tags: ["protocol:rtsp"]
+      max_duration: 120s
+      exec:
+          conduit_templates: [tcp]
+          params:
+              probe_path: "/stream"
+              credentials:
+                  - "admin:admin"
+                  - "admin:12345"
+                  - "admin:1234"
+                  - "admin:password"
+                  - "admin:"
+                  - "root:root"
+                  - "root:pass"
+                  - "root:"
+                  - "user:user"
+                  - "operator:operator"
+                  - "guest:guest"
