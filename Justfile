@@ -26,6 +26,10 @@ kraken-build:
     cd kraken/pkg/modulepb && go generate
     cd kraken && go build -o ../dist/kraken main.go
 
+[doc('Builds the Kraken TUI application.')]
+kraken-tui-build:
+    cd kraken && go build -o ../dist/kraken-tui ./cmd/tui
+
 [doc('Runs the tests for the nautilus suite.')]
 test:
     go test ./kraken/... -v -timeout 10s

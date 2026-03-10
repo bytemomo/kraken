@@ -36,9 +36,9 @@ stacks.
 - **Pooled buffers** keep allocations predictable. Receives hand back a buffer
   that callers release when done; sends can either borrow a buffer or pass a
   plain byte slice.
-- **Metadata blocks** accompany every operation with timing, interface, protocol,
-  and user-extensible fields (e.g., TLS session IDs). Kraken uses these fields
-  to enrich its telemetry without touching module code.
+- **Metadata blocks** accompany every operation with start/end timestamps,
+  interface index, and protocol number. Kraken uses these fields to enrich its
+  telemetry without touching module code.
 
 ## Usage Patterns
 

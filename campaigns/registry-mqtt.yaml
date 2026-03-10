@@ -1,0 +1,113 @@
+id: registry-mqtt-assessment
+type: network
+
+policy:
+    safety:
+        allow_aggressive: false
+        require_max_duration: true
+
+    runner:
+        max_parallel_targets: 4
+        defaults:
+            connection_timeout: 2s
+            connection_backoff: 500ms
+            max_reconnects: 3
+            max_connections_per_target: 1
+
+scanners:
+    - type: nmap
+      nmap:
+          ports: ["1883", "8883", "8884"]
+          open_only: true
+          timing: T3
+          skip_host_discovery: false
+          service_detect:
+              enabled: true
+              version: ALL
+
+conduit_templates:
+    - name: tcp
+      kind: stream
+      stack:
+          - name: tcp
+
+    - name: tls
+      kind: stream
+      required_tags: ["supports:tls"]
+      stack:
+          - name: tcp
+          - name: tls
+            params:
+                skip_verify: true
+
+tasks:
+    # TLS version check - registry module (v2 ABI)
+    - id: tls_version_check
+      registry: "latest"
+      required_tags: ["supports:tls", "protocol:mqtt"]
+      max_duration: 30s
+      exec:
+          conduit_templates: [tls]
+
+    # Certificate inspection - registry module (v2 ABI, Rust)
+    - id: cert_inspect
+      registry: "latest"
+      required_tags: ["supports:tls", "protocol:mqtt"]
+      max_duration: 30s
+      exec:
+          conduit_templates: [tls]
+
+    # MQTT authentication check - registry module (v2 ABI)
+    - id: mqtt_auth_check
+      registry: "latest"
+      required_tags: ["protocol:mqtt"]
+      max_duration: 60s
+      exec:
+          conduit_templates: [tcp, tls]
+          params:
+              timeout_ms: 5000
+
+    # MQTT ACL probing - registry module (v2 ABI)
+    - id: mqtt_acl_probe
+      registry: "latest"
+      required_tags: ["protocol:mqtt"]
+      max_duration: 120s
+      exec:
+          conduit_templates: [tcp, tls]
+          params:
+              topic: "kraken/probe/test"
+
+    # MQTT $SYS topic disclosure - registry module (v2 ABI)
+    - id: mqtt_sys_disclosure
+      registry: "latest"
+      required_tags: ["protocol:mqtt"]
+      max_duration: 30s
+      exec:
+          conduit_templates: [tcp, tls]
+
+    # Native dictionary attack (built-in module)
+    - id: mqtt-dict-attack
+      type: native
+      required_tags: ["protocol:mqtt"]
+      max_duration: 180s
+      exec:
+          conduit_templates: [tcp, tls]
+          params:
+              credentials:
+                  - "admin:admin"
+                  - "admin:admin123"
+                  - "admin:password"
+                  - "scada:scada"
+                  - "operator:operator"
+                  - "guest:guest"
+                  - "test:test"
+                  - "mqtt:mqtt"
+                  - "root:root"
+
+    # Native conformance test (built-in module)
+    - id: mqtt-conformance-test
+      type: native
+      required_tags: ["protocol:mqtt"]
+      max_duration: 120s
+      exec:
+          conduit_templates: [tcp, tls]

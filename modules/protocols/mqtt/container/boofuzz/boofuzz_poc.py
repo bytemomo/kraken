@@ -15,7 +15,7 @@ from boofuzz.utils.process_monitor_local import ProcessMonitorLocal
 
 OUTDIR: str = "boofuzz-results"
 MODULE_ID = "mqtt-boofuzz"
-DEFAULT_MAX_ITERATIONS = 1000
+DEFAULT_MAX_ITERATIONS = 1000000
 
 
 def build_run_result(

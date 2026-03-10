@@ -131,7 +131,7 @@
 
 #### 2.5.1 Architectural Requirements
 
-- **KRK-MOD-A1** --- The system shall define a clear, versioned interface (e.g., gRPC, ABI, CLI conventions) that all modules must adhere to.
+- **KRK-MOD-A1** --- The system shall define a clear, versioned interface (e.g., gRPC, ABI, container) that all modules must adhere to.
 - **KRK-MOD-A2** --- The system should provide a mechanism for discovering and registering available modules.
 
 #### 2.5.2 Functional Requirements

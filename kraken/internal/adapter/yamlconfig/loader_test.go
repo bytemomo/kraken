@@ -667,12 +667,12 @@ func TestValidatePolicy_DefaultBlocksAggressive(t *testing.T) {
 id: test-campaign
 tasks:
   - id: fuzzer
-    type: cli
+    type: container
     aggressive: true
     max_duration: 60s
     exec:
-      cli:
-        command: /bin/fuzz
+      container:
+        image: "example/fuzzer:latest"
 `
 	if err := os.WriteFile(campaignPath, []byte(content), 0644); err != nil {
 		t.Fatal(err)

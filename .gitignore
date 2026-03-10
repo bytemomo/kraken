@@ -34,6 +34,9 @@
 !kraken/
 !kraken/README.md
 
+!kraken/cmd/
+!kraken/cmd/**
+
 !kraken/main.go
 !kraken/internal/
 !kraken/internal/**

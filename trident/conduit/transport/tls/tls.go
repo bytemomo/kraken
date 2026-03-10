@@ -50,6 +50,7 @@ func (t *TlsClient) Dial(ctx context.Context) error {
 		_ = c.Close()
 		return err
 	}
+	_ = c.SetDeadline(time.Time{})
 	t.conn = c
 	return nil
 }

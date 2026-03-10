@@ -1,11 +1,13 @@
 package yamlconfig
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"bytemomo/kraken/internal/domain"
+	"bytemomo/kraken/internal/registry"
 	cnd "bytemomo/trident/conduit"
 
 	"gopkg.in/yaml.v3"
@@ -36,6 +38,11 @@ func loadCampaignWithModules(campaignPath string) (*domain.Campaign, error) {
 			return nil, fmt.Errorf("resolving campaign directory: %w", err)
 		}
 		campaignDir = absDir
+	}
+
+	// Resolve registry modules BEFORE template expansion and validation
+	if err := resolveRegistryModules(&campaign); err != nil {
+		return nil, fmt.Errorf("resolve registry modules: %w", err)
 	}
 
 	// Build template map for expansion
@@ -161,6 +168,36 @@ func LoadCampaign(path string) (*domain.Campaign, error) {
 	}
 
 	return campaign, nil
+}
+
+func resolveRegistryModules(campaign *domain.Campaign) error {
+	// Check if any tasks use the registry
+	hasRegistry := false
+	for _, task := range campaign.Tasks {
+		if task.Registry != "" {
+			hasRegistry = true
+			break
+		}
+	}
+	if !hasRegistry {
+		return nil
+	}
+
+	// Create registry client and resolver
+	client, err := registry.NewClient(registry.DefaultConfig())
+	if err != nil {
+		return fmt.Errorf("create registry client: %w", err)
+	}
+
+	resolver := registry.NewResolver(client)
+
+	// Resolve all registry modules
+	ctx := context.Background()
+	if err := resolver.ResolveModules(ctx, campaign.Tasks); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // ValidatePolicy checks campaign policy constraints for OT safety.

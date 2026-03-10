@@ -199,10 +199,12 @@ scanners:
           timeout: 10s
 ```
 
-#### Legacy single scanner (deprecated)
+#### Legacy scanner format
 
-The `scanner` field (singular) is still supported for backward compatibility.
-This is equivalent to a single nmap scanner and will be removed in a future version.
+The legacy format where nmap fields appear at the top level of a `scanners`
+entry (without the `type` and `nmap` wrapper) is still accepted for backward
+compatibility. The loader detects the flat layout and wraps it into the new
+structure automatically.
 
 #### Nmap scanner
 
@@ -261,10 +263,10 @@ The EtherCAT scanner:
 Tasks describe which modules Kraken should run. Each task defines:
 
 - `id`: unique name.
-- `type`: one of `native`, `lib`, `cli`, `grpc`, or `fuzz`.
+- `type`: one of `native`, `lib`, `grpc`, or `container`.
 - `required_tags`: optional list of tags that must be present on a target.
 - `max_duration`: optional timeout enforced by the runner.
-- `exec`: execution-specific block (ABI, CLI, Docker, gRPC, parameters, etc.).
+- `exec`: execution-specific block (ABI, container, gRPC, parameters, etc.).
 
 ```yaml
 tasks:
@@ -314,20 +316,10 @@ tasks:
           conduit:
               kind: frame
 
-    - id: "cli-module"
-      type: cli
-      required_tags: ["protocol:mqtt"]
+    - id: "container-fuzzer"
+      type: container
       exec:
-          cli:
-              exec: "/path/to/exec"
-              command: "scan"
-          params:
-              --test-case-index: "10-20"
-
-    - id: "docker-fuzzer"
-      type: fuzz
-      exec:
-          docker:
+          container:
               runtime: "podman"
               image: "example/fuzzer:latest"
               mounts:
@@ -348,6 +340,37 @@ tasks:
 
 Modules can be arbitrarily combined in a campaign. Kraken filters the list for
 each target based on tag requirements and then executes the filtered plan.
+
+### Registry modules
+
+Tasks can reference modules hosted on the Kraken module registry instead of
+providing a local path. Set the `registry` field to `"latest"` or a specific
+version string:
+
+```yaml
+tasks:
+    - id: mqtt_auth_check
+      type: lib
+      registry: "latest" # or "0.1.0"
+      required_tags: ["protocol:mqtt"]
+      max_duration: 30s
+      exec:
+          conduit:
+              kind: stream
+              stack:
+                  - name: tcp
+          params:
+              wordlist: ./wordlists/mqtt.txt
+```
+
+When a task has a `registry` field, the loader resolves the module against the
+registry index, downloads the artifact (with SHA-256 and Sigstore verification),
+and populates the `exec` block automatically. Artifacts are cached under
+`~/.kraken/modules/` so subsequent runs skip the download.
+
+The registry is hosted at
+`https://bytemomo.github.io/kraken-modules/index.yaml`. See
+`docs/internal/MODULE_REGISTRY_DESIGN.md` for the full design.
 
 ## Modules
 
@@ -381,43 +404,26 @@ Transports available today are:
 
 - `kind: stream` or `kind: 1` for stream-oriented conduits (TCP, TLS)
 - `kind: datagram` or `kind: 2` for datagram-oriented conduits (UDP, DTLS)
-- `kind: frame` or `kind: 3` for frame-oriented conduits (raw Ethernet)
+- `kind: network` or `kind: 3` for raw IP conduits (Layer 3)
+- `kind: frame` or `kind: 4` for frame-oriented conduits (raw Ethernet)
 
 String values are recommended for clarity.
 
-### CLI modules
+### Container modules
 
-CLI modules run an external executable on the same machine as Kraken. The CLI
-adapter automatically appends `--host`, `--port`, and `--output-dir` (when
-available) plus any key/value pairs found in `exec.params`. Module output must
-be a `domain.RunResult` JSON document printed to stdout. CLI modules are
-available for both `type: cli` and `type: fuzz` tasks (the runner omits the
-target information for fuzzers).
-
-### Docker modules
-
-CLI/fuzz tasks can also specify a `docker` execution block. Kraken runs the
-container using the configured runtime (defaults to `podman`) and expects the
-container to emit a `domain.RunResult` JSON payload on stdout. Bind mounts can
-be declared under `mounts` to pass seeds, wordlists, or output directories into
-the container.
+Container modules (`type: container`) run an OCI image using the configured
+runtime (defaults to `podman`). The container must emit a `domain.RunResult`
+JSON payload on stdout. Bind mounts can be declared under `mounts` to pass
+seeds, wordlists, or output directories into the container. Fuzz campaigns
+(`type: fuzz` in the campaign header) skip the scanning phase and inject a
+placeholder target, letting containerized fuzzers rely solely on params and
+mounted assets.
 
 ### gRPC modules
 
 gRPC modules allow offloading execution to a remote host. The adapter dials
 `exec.grpc.server_addr` with an optional `dial_timeout` and streams the target
 information together with module parameters.
-
-### Fuzz modules
-
-Fuzz campaigns (`type: fuzz`) still use the CLI and Docker adapters but skip
-the scanning phase entirely. The runner injects a placeholder target
-(`host: <campaign id>`, `port: 0`), so fuzzers should rely solely on the params
-and their mounted assets. This specialized campaign type keeps fuzz orchestration
-alongside the rest of Kraken (results are still saved in the same format, attack
-trees can still reason about findings) while decoupling the work from network
-discovery. It is ideal for AFL++ harnesses, coverage-guided
-fuzzer, or any other long-running fuzzing workflow.
 
 ## Attack Tree Evaluation
 

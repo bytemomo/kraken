@@ -35,13 +35,21 @@ type Module struct {
 	ModuleID     string        `yaml:"id"`
 	RequiredTags []string      `yaml:"required_tags,omitempty"`
 	MaxDuration  time.Duration `yaml:"max_duration,omitempty"`
-	Type         ModuleType    `yaml:"type"` // native|lib|grpc|cli|fuzz
+	Type         ModuleType    `yaml:"type"` // native|lib|grpc|container
 
 	// Aggressive marks this task as potentially disruptive to OT devices.
 	// Aggressive tasks may cause: connection churn, malformed packets,
 	// high-frequency polling, fuzzing, write operations, or protocol violations.
 	// Requires policy.safety.allow_aggressive: true to run.
 	Aggressive bool `yaml:"aggressive,omitempty"`
+
+	// Registry specifies that this module should be fetched from the registry.
+	// If set to "latest" or a version like "0.1.0", the module will be downloaded.
+	Registry string `yaml:"registry,omitempty"`
+
+	// RegistryResolved holds resolved registry metadata for lazy download.
+	// Type is any to avoid circular import with registry package.
+	RegistryResolved any `yaml:"-"`
 
 	ExecConfig struct {
 		ABI *struct {
@@ -140,7 +148,8 @@ func (m *Module) Validate() error {
 			return fmt.Errorf("abi.version is required and accept only two valid values: v1 or v2")
 		}
 
-		if m.ExecConfig.ABI.LibraryPath == "" {
+		// LibraryPath is set lazily for registry modules
+		if m.ExecConfig.ABI.LibraryPath == "" && m.Registry == "" {
 			return fmt.Errorf("abi.library_path is required")
 		}
 		if m.ExecConfig.ABI.Symbol == "" {
@@ -164,7 +173,8 @@ func (m *Module) Validate() error {
 
 	// Validate Container config
 	if hasContainer {
-		if m.ExecConfig.Container.Image == "" {
+		// Image is set lazily for registry modules
+		if m.ExecConfig.Container.Image == "" && m.Registry == "" {
 			return fmt.Errorf("container.image is required")
 		}
 		if m.Type != Container {

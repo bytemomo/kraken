@@ -17,15 +17,14 @@ Kraken's module system is designed to separate **orchestration** (scheduling, sa
 
 ## Module Types
 
-Kraken supports five module types, each with a different execution model:
+Kraken supports four module types, each with a different execution model:
 
-| Type     | Description                           | Adapter                | Use Case                            |
-| -------- | ------------------------------------- | ---------------------- | ----------------------------------- |
-| `native` | Go functions compiled into Kraken     | `NativeBuiltinAdapter` | Built-in protocol modules           |
-| `lib`    | Shared libraries (C/C++/Rust) via FFI | `ABIModuleAdapter`     | Performance-critical or legacy code |
-| `grpc`   | Remote services via gRPC              | `GRPCModuleAdapter`    | Distributed or isolated execution   |
-| `cli`    | External executables                  | `CLIModuleAdapter`     | Wrapping existing tools             |
-| `fuzz`   | Fuzzing harnesses                     | `DockerModuleAdapter`  | Containerized fuzz campaigns        |
+| Type        | Description                           | Adapter                  | Use Case                            |
+| ----------- | ------------------------------------- | ------------------------ | ----------------------------------- |
+| `native`    | Go functions compiled into Kraken     | `NativeBuiltinAdapter`   | Built-in protocol modules           |
+| `lib`       | Shared libraries (C/C++/Rust) via FFI | `ABIModuleAdapter`       | Performance-critical or legacy code |
+| `grpc`      | Remote services via gRPC              | `GRPCModuleAdapter`      | Distributed or isolated execution   |
+| `container` | OCI containers (Docker/Podman)        | `ContainerModuleAdapter` | Containerized or fuzz campaigns     |
 
 ---
 
@@ -38,14 +37,18 @@ type Module struct {
     ModuleID     string        `yaml:"id"`
     RequiredTags []string      `yaml:"required_tags,omitempty"`
     MaxDuration  time.Duration `yaml:"max_duration,omitempty"`
-    Type         ModuleType    `yaml:"type"` // native|lib|grpc|cli|fuzz
+    Type         ModuleType    `yaml:"type"` // native|lib|grpc|container
     Aggressive   bool          `yaml:"aggressive,omitempty"`
 
+    // Registry specifies that this module should be fetched from the registry.
+    // Set to "latest" or a version like "0.1.0".
+    Registry         string `yaml:"registry,omitempty"`
+    RegistryResolved any    `yaml:"-"` // resolved metadata (internal)
+
     ExecConfig struct {
-        ABI    *ABIConfig    `yaml:"abi,omitempty"`
-        GRPC   *GRPCConfig   `yaml:"grpc,omitempty"`
-        CLI    *CLIConfig    `yaml:"cli,omitempty"`
-        Docker *DockerConfig `yaml:"docker,omitempty"`
+        ABI       *ABIConfig       `yaml:"abi,omitempty"`
+        GRPC      *GRPCConfig      `yaml:"grpc,omitempty"`
+        Container *ContainerConfig `yaml:"container,omitempty"`
 
         Conduit          *ConduitConfig `yaml:"conduit,omitempty"`
         ConduitTemplates []string       `yaml:"conduit_templates,omitempty"`
@@ -59,10 +62,11 @@ type Module struct {
 | Field           | Required         | Description                                            |
 | --------------- | ---------------- | ------------------------------------------------------ |
 | `id`            | Yes              | Unique module identifier                               |
-| `type`          | Yes              | Execution type: `native`, `lib`, `grpc`, `cli`, `fuzz` |
+| `type`          | Yes              | Execution type: `native`, `lib`, `grpc`, `container`   |
 | `required_tags` | No               | Target must have all these tags to run module          |
 | `max_duration`  | Policy-dependent | Maximum execution time (required by default)           |
 | `aggressive`    | No               | Mark as potentially disruptive (blocked by default)    |
+| `registry`      | No               | Fetch from registry: `"latest"` or a version string   |
 | `exec.params`   | No               | Module-specific parameters                             |
 
 ---
@@ -402,7 +406,8 @@ Conduits abstract transport layers, allowing modules to focus on protocol logic.
 | -------------- | ----- | ------------ | -------------------- |
 | `KindStream`   | 1     | TCP, TLS     | MQTT, RTSP, HTTP     |
 | `KindDatagram` | 2     | UDP, DTLS    | CoAP, DNS            |
-| `KindFrame`    | 3     | Raw Ethernet | EtherCAT, Modbus TCP |
+| `KindNetwork`  | 3     | Raw IP       | Custom L3 protocols  |
+| `KindFrame`    | 4     | Raw Ethernet | EtherCAT, Modbus TCP |
 
 ### Layer Stacks
 
@@ -562,16 +567,11 @@ type HostPort struct {
 ### EtherCAT Target
 
 ```go
-type EtherCATSlave struct {
-    Interface   string  // Network interface (e.g., "eth0")
-    Position    uint16  // Auto-increment position
-    StationAddr uint16  // Configured station address
-    AliasAddr   uint16  // Alias from EEPROM
-    VendorID    uint32
-    ProductCode uint32
-    RevisionNo  uint32
-    SerialNo    uint32
-    PortStatus  uint16
+type EtherCATMaster struct {
+    Interface  string           // Network interface where master was observed
+    MACAddress net.HardwareAddr // Master's MAC address
+    SlaveCount int              // Number of slaves observed
+    Slaves     []uint16         // Station addresses of slaves seen
 }
 ```
 

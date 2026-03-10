@@ -16,6 +16,7 @@ import (
 	"bytemomo/kraken/internal/domain"
 	"bytemomo/kraken/internal/modules"
 	"bytemomo/kraken/internal/native"
+	"bytemomo/kraken/internal/registry"
 	"bytemomo/kraken/internal/runner"
 	"bytemomo/kraken/internal/runner/adapter"
 	"bytemomo/kraken/internal/scanner"
@@ -164,11 +165,23 @@ func setupAndRunModuleRunner(log *logrus.Entry, camp *domain.Campaign, reporter 
 	log.Info("Starting module runner")
 	executors := newModuleExecutors()
 
+	// Create registry resolver for lazy downloading
+	var registryResolver runner.RegistryResolver
+	if hasRegistryModules(camp.Tasks) {
+		client, err := registry.NewClient(registry.DefaultConfig())
+		if err != nil {
+			log.WithError(err).Warn("Failed to create registry client, registry modules may fail")
+		} else {
+			registryResolver = registry.NewResolver(client)
+		}
+	}
+
 	r := runner.Runner{
-		Log:             log,
-		Executors:       executors,
-		Store:           reporter,
-		ResultDirectory: resultDir,
+		Log:              log,
+		Executors:        executors,
+		Store:            reporter,
+		ResultDirectory:  resultDir,
+		RegistryResolver: registryResolver,
 	}
 
 	runnerCtx := context.Background()
@@ -232,6 +245,15 @@ func newModuleExecutors() []runner.ModuleExecutor {
 		adapter.NewContainerModuleAdapter(),
 		adapter.NewGRPCModuleAdapter(),
 	}
+}
+
+func hasRegistryModules(tasks []*domain.Module) bool {
+	for _, t := range tasks {
+		if t.Registry != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func report(log *logrus.Entry, reportWriter domain.ReportWriter, attackTreeWriter *attacktreereport.Writer, results []domain.RunResult, camp *domain.Campaign) error {

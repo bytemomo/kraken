@@ -280,24 +280,35 @@ func (m *nativeModule) runV2(ctx context.Context, symbol string, params map[stri
 }
 
 func Load(path string) (LoadableModule, error) {
+	// Try paths in order: exact path, then with platform extension
+	var candidates []string
+
+	// First try the exact path (for registry modules without extension)
+	candidates = append(candidates, path)
+
+	// Then try with platform extension
 	var extension string
 	switch runtime.GOOS {
 	case "darwin":
 		extension = ".dylib"
 	case "linux":
 		extension = ".so"
-	default:
-		return nil, fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+	}
+	if extension != "" && !strings.HasSuffix(path, extension) {
+		candidates = append(candidates, path+extension)
 	}
 
-	libPath := path + extension
-	clib := C.CString(libPath)
-	defer C.free(unsafe.Pointer(clib))
+	var lastErr string
+	for _, libPath := range candidates {
+		clib := C.CString(libPath)
+		handle := C.my_dlopen(clib)
+		C.free(unsafe.Pointer(clib))
 
-	handle := C.my_dlopen(clib)
-	if handle == nil {
-		return nil, fmt.Errorf("dlopen(%s) failed: %s", libPath, C.GoString(C.my_dlerror()))
+		if handle != nil {
+			return &nativeModule{handle: handle}, nil
+		}
+		lastErr = C.GoString(C.my_dlerror())
 	}
 
-	return &nativeModule{handle: handle}, nil
+	return nil, fmt.Errorf("dlopen(%s) failed: %s", path, lastErr)
 }
